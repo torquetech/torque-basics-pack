@@ -4,7 +4,6 @@
 
 """DOCSTRING"""
 
-import functools
 import os
 import subprocess
 
@@ -65,21 +64,21 @@ class V1ServiceImplementationInterface(v1.bond.Interface):
     def set_port(self, port: int):
         """DOCSTRING"""
 
-    def service(self) -> v1.utils.Future[Service] | Service:
+    def service(self) -> v1.utils.Future[Service]:
         """DOCSTRING"""
 
 
 class V1TCPSourceInterface(v1.component.SourceInterface):
     """DOCSTRING"""
 
-    def service(self) -> v1.utils.Future[Service] | Service:
+    def service(self) -> v1.utils.Future[Service]:
         """DOCSTRING"""
 
 
 class V1HttpSourceInterface(v1.component.SourceInterface):
     """DOCSTRING"""
 
-    def service(self) -> v1.utils.Future[Service] | Service:
+    def service(self) -> v1.utils.Future[Service]:
         """DOCSTRING"""
 
 
@@ -138,7 +137,7 @@ class BaseComponent(v1.component.Component):
 
         return p.stdout.decode("utf8").strip()
 
-    def on_interfaces(self):
+    def on_interfaces(self) -> [v1.component.Interface]:
         """DOCSTRING"""
 
         return [
@@ -249,7 +248,7 @@ class V1TCPService(BaseService):
 
         self._proto = self.parameters["proto"]
 
-    def on_interfaces(self):
+    def on_interfaces(self) -> [v1.component.Interface]:
         """DOCSTRING"""
 
         return super().on_interfaces() + [
@@ -265,7 +264,7 @@ class V1HttpService(BaseService):
 
         self._proto = "http"
 
-    def on_interfaces(self):
+    def on_interfaces(self) -> [v1.component.Interface]:
         """DOCSTRING"""
 
         return super().on_interfaces() + [
@@ -299,26 +298,28 @@ class V1IngressLink(v1.link.Link):
             }
         }
 
+    def _resolve_ingress(self, service: v1.utils.Future[Service]) -> str:
+        """DOCSTRING"""
+
+        service = v1.utils.resolve_futures(service)
+
+        return hlb.Ingress(self.name,
+                           service.host,
+                           service.port,
+                           self.parameters["host"],
+                           self.parameters["path"],
+                           {})
+
     def on_apply(self):
         """DOCSTRING"""
 
-        service = self.interfaces.src.service()
-
-        if isinstance(service, v1.utils.Future):
-            raise v1.exceptions.RuntimeError(f"{self.source}: cannot link remote object")
-
-        self.interfaces.dst.add(hlb.Ingress(self.name,
-                                            service.host,
-                                            service.port,
-                                            self.parameters["host"],
-                                            self.parameters["path"],
-                                            {}))
+        self.interfaces.dst.add(v1.utils.Future(self._resolve_ingress, self.interfaces.src.service()))
 
 
 class BaseLink(environment.V1BaseLink):
     """DOCSTRING"""
 
-    def _resolve_uri(self, service: v1.utils.Future[Service] | Service):
+    def _resolve_uri(self, service: v1.utils.Future[Service]):
         """DOCSTRING"""
 
         service = v1.utils.resolve_futures(service)
@@ -330,9 +331,7 @@ class BaseLink(environment.V1BaseLink):
 
         service = self.interfaces.src.service()
 
-        self.interfaces.dst.add(self._name(),
-                                v1.utils.Future(functools.partial(self._resolve_uri,
-                                                                  service)))
+        self.interfaces.dst.add(self._name(), v1.utils.Future(self._resolve_uri, service))
 
 
 class V1TCPServiceLink(BaseLink):
